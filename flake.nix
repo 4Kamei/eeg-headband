@@ -9,7 +9,7 @@
     utils.lib.eachDefaultSystem (system:
       let
         overlays = [ (import rust-overlay) ];
-        pkgs = import nixpkgs { inherit system; };
+        pkgs = import nixpkgs { inherit system overlays; };
       in
       {
         devShell = with pkgs; mkShell rec {
@@ -18,10 +18,9 @@
 
             (rust-bin.stable.latest.default.override {
               extensions = ["rust-src"];
-              targets = ["thumbv8m-main-none-eabihf"];
+              targets = ["thumbv8m.main-none-eabi"];
             })
             
-
             pkg-config
             gcc
             cargo
@@ -29,10 +28,14 @@
             rustfmt
             rustPackages.clippy
           
+            
+            libclang
+
             rust-analyzer
 
           ];
-          
+
+          LIBCLANG_PATH = "${libclang.lib}/lib";
           LD_LIBRARY_PATH = "${lib.makeLibraryPath buildInputs}";
           RUST_SRC_PATH = rustPlatform.rustLibSrc;
         };
