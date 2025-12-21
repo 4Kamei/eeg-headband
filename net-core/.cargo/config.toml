@@ -1,7 +1,5 @@
 [target.'cfg(all(target_arch = "arm", target_os = "none"))']
 
-runner = "xtask run"
-
 [build]
 target = "thumbv8m.main-none-eabi"
 
