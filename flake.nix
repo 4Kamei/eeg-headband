@@ -18,7 +18,10 @@
 
             (rust-bin.stable.latest.default.override {
               extensions = ["rust-src"];
-              targets = ["thumbv8m.main-none-eabi"];
+              targets = [
+                "thumbv8m.main-none-eabi"       #Network core
+                "thumbv8m.main-none-eabihf"     #Application core
+              ];
             })
             
             pkg-config
