@@ -19,7 +19,7 @@
         #};
         #
         #xtask_bin = craneLib.buildPackage {
-        #    inherit cargoArtifacts;
+        #    inherit cargoArtifacts
         #    src = srcXtask;
         #};
 
@@ -63,7 +63,7 @@
             rust-analyzer
 
           ];
-
+    
           LIBCLANG_PATH = "${libclang.lib}/lib";
           LD_LIBRARY_PATH = "${lib.makeLibraryPath buildInputs}";
           RUST_SRC_PATH = rustPlatform.rustLibSrc;

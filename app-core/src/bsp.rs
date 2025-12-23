@@ -1,6 +1,6 @@
 use embassy_nrf::{
-    config::{Config, DcdcConfig, Debug, HfclkSource, HfxoCapacitance, LfclkSource},
     Peripherals,
+    config::{Config, DcdcConfig, Debug, HfclkSource, HfxoCapacitance, LfclkSource},
 };
 
 /// Initalize the chip

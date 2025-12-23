@@ -35,6 +35,19 @@ impl Core {
             Core::Net => Path::new(concat!(env!("GIT_REPO_ROOT"), "/net-core/")),
         }
     }
+
+    fn get_binary_path(&self) -> &Path {
+        match self {
+            Core::App => Path::new(concat!(
+                env!("GIT_REPO_ROOT"),
+                "/app-core/target/thumbv8m.main-none-eabihf/release/app-core"
+            )),
+            Core::Net => Path::new(concat!(
+                env!("GIT_REPO_ROOT"),
+                "/net-core/target/thumbv8m.main-none-eabi/release/net-core"
+            )),
+        }
+    }
 }
 
 /// Build the b
@@ -42,24 +55,18 @@ pub fn run() -> Result<()> {
     build_binary(Core::App)?;
     build_binary(Core::Net)?;
 
-    // Link the binaries
-    link_elfs()?;
+    flash_device()?;
 
     Ok(())
 }
 
-/// Link both of the elfs together to make a final elf
-pub fn link_elfs() -> Result<()> {
-    tracing::info!("Linking binaries together");
-    Ok(())
-}
-
+/// Checks the current images on the device, and flashes the new images
 pub fn flash_device() -> Result<()> {
     todo!()
 }
 
 /// Debug using the currently built binary, on the specific core
-pub fn debug(core: Core) -> Result<()> {
+pub fn debug(_core: Core) -> Result<()> {
     todo!("do whatever");
 }
 
