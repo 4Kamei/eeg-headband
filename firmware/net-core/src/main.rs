@@ -178,6 +178,7 @@ async fn sdc_task(
             let mut packet_buffer: [u8; 512] = [0; 512];
             while let Ok(count) = channel.receive(&stack, &mut packet_buffer).await {
                 let data = &packet_buffer[..count];
+                ??? 
             }
             defmt::info!("Connection closed");
         }

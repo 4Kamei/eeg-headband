@@ -40,11 +40,11 @@ impl Core {
         match self {
             Core::App => Path::new(concat!(
                 env!("GIT_REPO_ROOT"),
-                "/app-core/target/thumbv8m.main-none-eabihf/release/app-core"
+                "firmware/app-core/target/thumbv8m.main-none-eabihf/release/app-core"
             )),
             Core::Net => Path::new(concat!(
                 env!("GIT_REPO_ROOT"),
-                "/net-core/target/thumbv8m.main-none-eabi/release/net-core"
+                "firmware/net-core/target/thumbv8m.main-none-eabi/release/net-core"
             )),
         }
     }

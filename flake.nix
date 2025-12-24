@@ -56,7 +56,7 @@
             rustc
             rustfmt
             rustPackages.clippy
-          
+            dbus
             
             libclang
 
