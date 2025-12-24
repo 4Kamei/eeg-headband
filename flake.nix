@@ -57,7 +57,15 @@
             rustfmt
             rustPackages.clippy
             dbus
-            
+   
+            # Linux dependencies for running vulkan
+            libxcb
+            libxkbcommon
+   
+            vulkan-loader
+            vulkan-headers
+            vulkan-tools
+
             libclang
 
             rust-analyzer
