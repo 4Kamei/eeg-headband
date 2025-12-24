@@ -32,6 +32,7 @@ use trouble_host::prelude::AdStructure;
 use trouble_host::prelude::Advertisement;
 use trouble_host::prelude::AdvertisementParameters;
 use trouble_host::prelude::DefaultPacketPool;
+use trouble_host::prelude::Uuid;
 use trouble_host::prelude::BR_EDR_NOT_SUPPORTED;
 use trouble_host::prelude::LE_GENERAL_DISCOVERABLE;
 use trouble_host::Address;
@@ -124,6 +125,7 @@ async fn sdc_task(
     let len = AdStructure::encode_slice(
         &[
             AdStructure::CompleteLocalName(b"OpenEEG Headband"),
+            AdStructure::ServiceUuids128(&[common::EEG_DATA_SERVICE_UUID]),
             AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
         ],
         &mut adv_data[..],
@@ -139,7 +141,7 @@ async fn sdc_task(
             let advertiser = peripheral
                 .advertise(
                     &params,
-                    Advertisement::NonconnectableScannableUndirected {
+                    Advertisement::ConnectableScannableUndirected {
                         adv_data: &adv_data[..len],
                         scan_data: &[],
                     },
@@ -178,7 +180,7 @@ async fn sdc_task(
             let mut packet_buffer: [u8; 512] = [0; 512];
             while let Ok(count) = channel.receive(&stack, &mut packet_buffer).await {
                 let data = &packet_buffer[..count];
-                ??? 
+                defmt::info!("Got data {:?}", data);
             }
             defmt::info!("Connection closed");
         }

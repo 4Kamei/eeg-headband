@@ -1,5 +1,9 @@
 #![no_std]
 
+pub const EEG_DATA_SERVICE_UUID: [u8; 16] = [
+    255, 77, 189, 23, 34, 96, 77, 13, 167, 102, 45, 228, 119, 88, 43, 141,
+];
+
 #[allow(dead_code)]
 #[unsafe(link_section = ".shared_ram.ble_queue")]
 pub static BLE_QUEUE: crate::ring_buffer::UninitRingBuffer<u64, 1024> =
