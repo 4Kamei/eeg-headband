@@ -3,8 +3,6 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     utils.url = "github:numtide/flake-utils";
     rust-overlay.url = "github:oxalica/rust-overlay";
-    #crane.url = "github:ipetkov/crane";
-    #crane.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = { self, nixpkgs, utils, rust-overlay} :
@@ -13,22 +11,12 @@
         overlays = [ (import rust-overlay) ];
         pkgs = import nixpkgs { inherit system overlays; };
 
-        #srcXtask = ./xtask;
-        #cargoArtifacts = craneLib.buildDepsOnly {
-        #    src = srcXtask;
-        #};
-        #
-        #xtask_bin = craneLib.buildPackage {
-        #    inherit cargoArtifacts
-        #    src = srcXtask;
-        #};
-
         xtask = pkgs.writeShellScriptBin "xtask" ''
             set -euo pipefail
 
             repo_root="$(${pkgs.git}/bin/git rev-parse --show-toplevel)"
 
-            cd "$repo_root/xtask"
+            cd "$repo_root/firmware/xtask"
             cargo r -- "$@"
             cd ..
         '';
@@ -58,6 +46,12 @@
             rustPackages.clippy
             dbus
    
+            perf
+
+            capnproto
+
+            gdb
+
             # Linux dependencies for running vulkan
             libxcb
             libxkbcommon

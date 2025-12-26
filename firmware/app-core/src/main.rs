@@ -26,11 +26,11 @@ async fn main(spawner: Spawner) {
         "event0-ipc",
         ipc_handler_task(event0, defmt::unwrap!(IPC_0_WATCH.receiver()))
     ));
-    let ble_receiver =
+    let mut ble_receiver =
         common::BLE_QUEUE.get_receiver_with_signal(defmt::unwrap!(IPC_0_WATCH.receiver()));
 
     loop {
-        Timer::after_secs(1).await;
+        defmt::info!("Got event! {:?}", ble_receiver.recv().await);
     }
 }
 
