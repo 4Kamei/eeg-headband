@@ -66,6 +66,17 @@ pub mod ring_buffer {
             }
         }
 
+        pub unsafe fn reset_receiver(&self) {
+            self.has_receiver
+                .store(false, core::sync::atomic::Ordering::SeqCst);
+            defmt::info!(
+                "sender: {:?}; receiver: {:?}, buffer: {:?}",
+                core::ptr::addr_of!(self.has_sender),
+                core::ptr::addr_of!(self.has_receiver),
+                core::ptr::addr_of!(self.ring_buffer),
+            );
+        }
+
         /// Gets the sender part of this channel (or panics, if has already been taken)
         pub fn get_sender(&self) -> spsc::Producer<'_, T> {
             if let Err(_) = self.has_sender.compare_exchange(
@@ -89,7 +100,11 @@ pub mod ring_buffer {
                 core::sync::atomic::Ordering::SeqCst,
                 core::sync::atomic::Ordering::Relaxed,
             ) {
-                defmt::panic!("RingBuffer already has a receiver registered");
+                defmt::panic!(
+                    "RingBuffer already has a receiver registered. Address of value: {:?}, value {:?}",
+                    core::ptr::addr_of!(self.has_receiver),
+                    self.has_receiver.load(core::sync::atomic::Ordering::SeqCst)
+                );
             };
             unsafe { &mut *(self.ring_buffer.get() as *mut spsc::Queue<T, N>) }
                 .split()

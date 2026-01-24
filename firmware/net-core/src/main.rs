@@ -43,12 +43,14 @@ static IPC_0_WATCH: watch::Watch<CriticalSectionRawMutex, (), 1> = watch::Watch:
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
+    defmt::info!("Started Network core");
     let mut config = Config::default();
     config.debug = embassy_nrf::config::Debug::Allowed;
     config.hfclk_source = embassy_nrf::config::HfclkSource::ExternalXtal;
     config.lfclk_source = embassy_nrf::config::LfclkSource::Synthesized;
 
     let p = embassy_nrf::init(config);
+    defmt::info!("Initialized");
 
     // Create the clock configuration
     let lfclk_cfg = mpsl_raw::mpsl_clock_lfclk_cfg_t {
@@ -75,8 +77,10 @@ async fn main(spawner: Spawner) {
     static RNG: StaticCell<Rng<embassy_nrf::mode::Async>> = StaticCell::new();
     let rng = RNG.init(Rng::new(p.RNG, Irqs));
 
-    static SDC_MEM: StaticCell<sdc::Mem<1024>> = StaticCell::new();
-
+    static SDC_MEM: StaticCell<sdc::Mem<1856>> = StaticCell::new();
+    defmt::info!("Initializing the SDC Memory");
+    let sdc_mem = SDC_MEM.init(sdc::Mem::new());
+    defmt::info!("Initializing the SDC");
     // Initialize the SoftDevice Controller
     let sdc = nrf_sdc::Builder::new()
         .unwrap()
@@ -84,11 +88,13 @@ async fn main(spawner: Spawner) {
         .unwrap()
         .support_peripheral()
         .unwrap()
-        .build(sdc_p, rng, mpsl, SDC_MEM.init(sdc::Mem::new()))
+        .build(sdc_p, rng, mpsl, sdc_mem)
         .unwrap();
 
+    defmt::info!("Getting sender");
     let producer = common::BLE_QUEUE.get_sender_with_signal(IPC_0_WATCH.sender());
 
+    defmt::info!("Spawning tasks");
     // Spawn the MPSL and SDC tasks
     spawner.must_spawn(mpsl_task(mpsl));
     spawner.must_spawn(sdc_task(sdc, producer));
