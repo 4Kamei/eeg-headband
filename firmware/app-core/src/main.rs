@@ -5,7 +5,7 @@ use core::{panic::PanicInfo, sync::atomic::compiler_fence};
 use defmt_rtt as _;
 use embassy_executor::{task, Spawner, SpawnerTraceExt};
 use embassy_nrf::gpio::Output;
-use embassy_nrf::ipc::{self, InterruptHandler as IpcInterruptHandler, Ipc};
+use embassy_nrf::ipc::{self, InterruptHandler as IpcInterruptHandler, Ipc, IpcChannel};
 use embassy_nrf::pac::SPU;
 use embassy_nrf::peripherals::IPC;
 use embassy_nrf::{bind_interrupts, reset};
@@ -52,21 +52,16 @@ async fn main(spawner: Spawner) {
     reset::hold_network_core();
 
     defmt::info!("Application core started");
-    // SAFETY: We've just started, and we only use the receiver in this code - hence we can assert
-    // that we're fine here
-    unsafe {
-        common::BLE_QUEUE.reset();
-        defmt::info!("Reseting receiver");
-    };
 
     let p = bsp::init();
     let Ipc {
         event0: mut start_ipc,
-        event1: ble_queue_ipc,
+        event1: mut ble_queue_ipc,
         ..
     } = Ipc::new(p.IPC, Irqs);
 
-    unsafe { start_ipc.task().subscribe_reg().write(0) };
+    start_ipc.configure_wait([IpcChannel::Channel0]);
+    ble_queue_ipc.configure_trigger([IpcChannel::Channel1]);
 
     reset::clear_reasons();
     reset::release_network_core();
@@ -86,6 +81,8 @@ async fn main(spawner: Spawner) {
 
     defmt::info!("Waiting for network core to start");
     start_ipc.wait().await;
+    defmt::info!("Network core started");
+
     defmt::unwrap!(spawner.spawn(gpiote_blinker(led_4_net_status, start_ipc)));
 
     defmt::unwrap!(spawner.spawn_named(
@@ -93,8 +90,9 @@ async fn main(spawner: Spawner) {
         ipc_handler_task(ble_queue_ipc, BLE_WATCH.sender())
     ));
 
+    // Safety: This is the only place where this is called
     let mut ble_receiver =
-        common::BLE_QUEUE.get_receiver_with_signal(defmt::unwrap!(BLE_WATCH.receiver()));
+        unsafe { common::BLE_QUEUE.get_receiver_with_signal(defmt::unwrap!(BLE_WATCH.receiver())) };
 
     loop {
         defmt::info!("Got event! {:?}", ble_receiver.recv().await);

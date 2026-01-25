@@ -14,6 +14,7 @@ use embassy_nrf::gpio::Output;
 use embassy_nrf::ipc;
 use embassy_nrf::ipc::InterruptHandler as IpcInterruptHandler;
 use embassy_nrf::ipc::Ipc;
+use embassy_nrf::ipc::IpcChannel;
 use embassy_nrf::peripherals::IPC;
 use embassy_nrf::peripherals::RNG;
 use embassy_nrf::rng::InterruptHandler as RngInterruptHandler;
@@ -27,8 +28,10 @@ use nrf_sdc::mpsl::{
     raw as mpsl_raw, ClockInterruptHandler, HighPrioInterruptHandler, LowPrioInterruptHandler,
 };
 use nrf_sdc::mpsl::{MultiprotocolServiceLayer, Peripherals};
+use nrf_sdc::Builder;
 use nrf_sdc::SoftdeviceController;
 use static_cell::StaticCell;
+use trouble_host::advertise;
 use trouble_host::prelude::AdStructure;
 use trouble_host::prelude::Advertisement;
 use trouble_host::prelude::AdvertisementParameters;
@@ -44,8 +47,7 @@ static IPC_0_WATCH: watch::Watch<CriticalSectionRawMutex, (), 1> = watch::Watch:
 #[embassy_executor::task]
 async fn led_blinker(ipc: ipc::Event<'static>) {
     loop {
-        Timer::after_millis(200).await;
-        defmt::info!("Triggering");
+        Timer::after_millis(500).await;
         ipc.trigger();
     }
 }
@@ -62,11 +64,16 @@ async fn main(spawner: Spawner) {
     defmt::info!("Initialized");
 
     let Ipc {
-        event0: start_ipc, ..
+        event0: mut start_ipc,
+        ..
     } = Ipc::new(p.IPC, Irqs);
+
+    start_ipc.configure_trigger([IpcChannel::Channel0]);
 
     defmt::info!("Triggering start no app core");
     defmt::unwrap!(spawner.spawn(led_blinker(start_ipc)));
+
+    // Your application logic can go here.
 
     // Create the clock configuration
     let lfclk_cfg = mpsl_raw::mpsl_clock_lfclk_cfg_t {
@@ -83,7 +90,9 @@ async fn main(spawner: Spawner) {
 
     // Initialize the MPSL
     static MPSL: StaticCell<MultiprotocolServiceLayer> = StaticCell::new();
-    let mpsl = MPSL.init(MultiprotocolServiceLayer::new(mpsl_p, Irqs, lfclk_cfg).unwrap());
+    let mpsl = MPSL.init(defmt::unwrap!(MultiprotocolServiceLayer::new(
+        mpsl_p, Irqs, lfclk_cfg
+    )));
 
     let sdc_p = nrf_sdc::Peripherals::new(
         p.PPI_CH3, p.PPI_CH4, p.PPI_CH5, p.PPI_CH6, p.PPI_CH7, p.PPI_CH8, p.PPI_CH9, p.PPI_CH10,
@@ -98,27 +107,21 @@ async fn main(spawner: Spawner) {
     let sdc_mem = SDC_MEM.init(sdc::Mem::new());
     defmt::info!("Initializing the SDC");
     // Initialize the SoftDevice Controller
-    let sdc = nrf_sdc::Builder::new()
-        .unwrap()
-        .support_adv()
-        .unwrap()
-        .support_peripheral()
-        .unwrap()
-        .build(sdc_p, rng, mpsl, sdc_mem)
-        .unwrap();
+    let sdc = defmt::unwrap!(nrf_sdc::Builder::new()
+        .and_then(Builder::support_peripheral)
+        .and_then(Builder::support_central)
+        .and_then(Builder::support_ext_scan)
+        .and_then(Builder::support_ext_adv)
+        .and_then(|b| b.build(sdc_p, rng, mpsl, sdc_mem)));
 
     defmt::info!("Getting sender");
-    let producer = common::BLE_QUEUE.get_sender_with_signal(IPC_0_WATCH.sender());
+    // Safety: This is the only place in the codebase where this is called
+    let producer = unsafe { common::BLE_QUEUE.get_sender_with_signal(IPC_0_WATCH.sender()) };
 
     defmt::info!("Spawning tasks");
     // Spawn the MPSL and SDC tasks
     spawner.must_spawn(mpsl_task(mpsl));
     spawner.must_spawn(sdc_task(sdc, producer));
-
-    // Your application logic can go here.
-    loop {
-        Timer::after_secs(1).await;
-    }
 }
 
 #[embassy_executor::task]
@@ -131,49 +134,60 @@ async fn sdc_task(
     sdc: SoftdeviceController<'static>,
     _producer: RingBufferProducer<'static, u64, 1>,
 ) -> ! {
+    defmt::info!("In SDC task");
+
     let address = Address::random([0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]);
 
     let mut resources: HostResources<DefaultPacketPool, 0, 1> = HostResources::new();
 
     let stack = trouble_host::new(sdc, &mut resources).set_random_address(address);
+    defmt::info!("Created stack");
 
     let Host {
         mut peripheral,
         mut runner,
         ..
     } = stack.build();
+    defmt::info!("Built stack");
 
-    let mut adv_data = [0; 31];
-    let len = AdStructure::encode_slice(
+    let mut adv_data = [0; 64];
+    let len = defmt::unwrap!(AdStructure::encode_slice(
         &[
             AdStructure::CompleteLocalName(b"OpenEEG Headband"),
+            AdStructure::ShortenedLocalName(b"EEG Headband"),
             AdStructure::ServiceUuids128(&[common::EEG_DATA_SERVICE_UUID]),
             AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
         ],
         &mut adv_data[..],
-    )
-    .unwrap();
+    ));
+
+    defmt::info!("Len {:?}, {:?}", len, adv_data);
 
     defmt::info!("Starting Advertising");
     join(runner.run(), async {
         loop {
-            let mut params = AdvertisementParameters::default();
-            params.interval_min = Duration::from_millis(100);
-            params.interval_max = Duration::from_millis(100);
-            let advertiser = peripheral
-                .advertise(
-                    &params,
-                    Advertisement::ConnectableScannableUndirected {
-                        adv_data: &adv_data[..len],
-                        scan_data: &[],
-                    },
-                )
-                .await
-                .unwrap();
+            defmt::info!("Restarting BLE listening loop");
+            let params = AdvertisementParameters::default();
+
+            let advertiser = defmt::unwrap!(
+                peripheral
+                    .advertise(
+                        &params,
+                        Advertisement::ConnectableScannableUndirected {
+                            adv_data: &adv_data[..len],
+                            scan_data: &[],
+                        },
+                    )
+                    .await
+            );
+
+            defmt::info!("Advertising - waiting for connection");
 
             let Ok(connection) = advertiser.accept().await else {
                 continue;
             };
+
+            defmt::info!("Connection accepted");
 
             let mut l2cap_config = trouble_host::l2cap::L2capChannelConfig::default();
             l2cap_config.mtu = Some(512);
@@ -209,7 +223,11 @@ async fn sdc_task(
     })
     .await;
 
-    loop {}
+    defmt::info!("Ending");
+
+    loop {
+        Timer::after_secs(1).await;
+    }
 }
 
 #[task]

@@ -49,86 +49,46 @@ pub mod ring_buffer {
     }
     /// Ring buffer that has not yet been initialized
     pub struct UninitRingBuffer<T: Copy, const N: usize> {
-        /// Bits
-        ///     0: init_started
-        ///     1: init_finished
-        has_sender: AtomicBool,
-        has_receiver: AtomicBool,
         ring_buffer: UnsafeCell<spsc::Queue<T, N>>,
     }
 
     impl<T: Copy, const N: usize> UninitRingBuffer<T, N> {
         pub const fn new() -> Self {
             Self {
-                has_sender: AtomicBool::new(false),
-                has_receiver: AtomicBool::new(false),
                 ring_buffer: UnsafeCell::new(spsc::Queue::new()),
             }
         }
 
-        pub unsafe fn reset(&self) {
-            self.has_receiver
-                .store(false, core::sync::atomic::Ordering::SeqCst);
-            self.has_sender
-                .store(false, core::sync::atomic::Ordering::SeqCst);
-            defmt::info!(
-                "sender: {:?}; receiver: {:?}, buffer: {:?}",
-                core::ptr::addr_of!(self.has_sender),
-                core::ptr::addr_of!(self.has_receiver),
-                core::ptr::addr_of!(self.ring_buffer),
-            );
-        }
-
-        /// Gets the sender part of this channel (or panics, if has already been taken)
-        pub fn get_sender(&self) -> spsc::Producer<'_, T> {
-            if let Err(_) = self.has_sender.compare_exchange(
-                false,
-                true,
-                core::sync::atomic::Ordering::SeqCst,
-                core::sync::atomic::Ordering::Relaxed,
-            ) {
-                defmt::panic!("RingBuffer already has a sender registered");
-            };
+        /// Gets the sender part of this channel. Safety: This should only be called once
+        pub unsafe fn get_sender(&self) -> spsc::Producer<'_, T> {
             unsafe { &mut *(self.ring_buffer.get() as *mut spsc::Queue<T, N>) }
                 .split()
                 .0
         }
 
-        /// Gets the sender part of this channel (or panics, if has already been taken)
-        pub fn get_receiver(&self) -> spsc::Consumer<'_, T> {
-            if let Err(_) = self.has_receiver.compare_exchange(
-                false,
-                true,
-                core::sync::atomic::Ordering::SeqCst,
-                core::sync::atomic::Ordering::Relaxed,
-            ) {
-                defmt::panic!(
-                    "RingBuffer already has a receiver registered. Address of value: {:?}, value {:?}",
-                    core::ptr::addr_of!(self.has_receiver),
-                    self.has_receiver.load(core::sync::atomic::Ordering::SeqCst)
-                );
-            };
+        /// Gets the sender part of this channel. Safety: This should only be called once
+        pub unsafe fn get_receiver(&self) -> spsc::Consumer<'_, T> {
             unsafe { &mut *(self.ring_buffer.get() as *mut spsc::Queue<T, N>) }
                 .split()
                 .1
         }
 
-        pub fn get_receiver_with_signal<'a, const M: usize>(
+        pub unsafe fn get_receiver_with_signal<'a, const M: usize>(
             &'a self,
             signal: watch::Receiver<'a, CriticalSectionRawMutex, (), M>,
         ) -> RingBufferConsumer<'a, T, M> {
             RingBufferConsumer {
-                receiver: self.get_receiver(),
+                receiver: unsafe { self.get_receiver() },
                 signal,
             }
         }
 
-        pub fn get_sender_with_signal<'a, const M: usize>(
+        pub unsafe fn get_sender_with_signal<'a, const M: usize>(
             &'a self,
             signal: watch::Sender<'a, CriticalSectionRawMutex, (), M>,
         ) -> RingBufferProducer<'a, T, M> {
             RingBufferProducer {
-                sender: self.get_sender(),
+                sender: unsafe { self.get_sender() },
                 signal,
             }
         }
