@@ -11,6 +11,7 @@ use embassy_futures::join::join;
 use embassy_nrf::bind_interrupts;
 use embassy_nrf::config::Config;
 use embassy_nrf::gpio::Output;
+use embassy_nrf::ipc;
 use embassy_nrf::ipc::InterruptHandler as IpcInterruptHandler;
 use embassy_nrf::ipc::Ipc;
 use embassy_nrf::peripherals::IPC;
@@ -41,10 +42,11 @@ use trouble_host::HostResources;
 static IPC_0_WATCH: watch::Watch<CriticalSectionRawMutex, (), 1> = watch::Watch::new();
 
 #[embassy_executor::task]
-async fn led_blinker(mut led: Output<'static>) {
+async fn led_blinker(ipc: ipc::Event<'static>) {
     loop {
-        Timer::after_millis(500).await;
-        led.toggle();
+        Timer::after_millis(200).await;
+        defmt::info!("Triggering");
+        ipc.trigger();
     }
 }
 
@@ -63,16 +65,8 @@ async fn main(spawner: Spawner) {
         event0: start_ipc, ..
     } = Ipc::new(p.IPC, Irqs);
 
-    let output2 = Output::new(
-        p.P0_30,
-        embassy_nrf::gpio::Level::High,
-        embassy_nrf::gpio::OutputDrive::Standard,
-    );
-
-    defmt::unwrap!(spawner.spawn(led_blinker(output2)));
-
     defmt::info!("Triggering start no app core");
-    start_ipc.trigger();
+    defmt::unwrap!(spawner.spawn(led_blinker(start_ipc)));
 
     // Create the clock configuration
     let lfclk_cfg = mpsl_raw::mpsl_clock_lfclk_cfg_t {

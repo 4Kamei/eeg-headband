@@ -24,7 +24,16 @@ async fn led_blinker(mut led: Output<'static>) {
     }
 }
 
+#[embassy_executor::task]
+async fn gpiote_blinker(mut led: Output<'static>, mut event: ipc::Event<'static, IPC>) {
+    loop {
+        event.wait().await;
+        led.toggle();
+    }
+}
+
 fn init_trustzone() {
+    // Allow shared ram to be accessed by both cores
     let region_start = (0x2004_0000 - 0x2000_0000) / 0x0000_2000;
     let region_end = (0x2008_0000 - 0x2000_0000) / 0x0000_2000;
     for region in region_start..region_end {
@@ -57,19 +66,27 @@ async fn main(spawner: Spawner) {
         ..
     } = Ipc::new(p.IPC, Irqs);
 
+    unsafe { start_ipc.task().subscribe_reg().write(0) };
+
     reset::clear_reasons();
     reset::release_network_core();
 
-    let output1 = Output::new(
+    let led_2_app_status = Output::new(
         p.P0_29,
         embassy_nrf::gpio::Level::Low,
         embassy_nrf::gpio::OutputDrive::Standard,
     );
+    defmt::unwrap!(spawner.spawn(led_blinker(led_2_app_status)));
 
-    defmt::unwrap!(spawner.spawn(led_blinker(output1)));
+    let led_4_net_status = Output::new(
+        p.P0_30,
+        embassy_nrf::gpio::Level::Low,
+        embassy_nrf::gpio::OutputDrive::Standard,
+    );
 
-    defmt::info!("Waiting for network core to start...");
+    defmt::info!("Waiting for network core to start");
     start_ipc.wait().await;
+    defmt::unwrap!(spawner.spawn(gpiote_blinker(led_4_net_status, start_ipc)));
 
     defmt::unwrap!(spawner.spawn_named(
         "ble-ipc",
