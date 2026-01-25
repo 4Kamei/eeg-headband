@@ -10,7 +10,9 @@ use embassy_executor::Spawner;
 use embassy_futures::join::join;
 use embassy_nrf::bind_interrupts;
 use embassy_nrf::config::Config;
+use embassy_nrf::gpio::Output;
 use embassy_nrf::ipc::InterruptHandler as IpcInterruptHandler;
+use embassy_nrf::ipc::Ipc;
 use embassy_nrf::peripherals::IPC;
 use embassy_nrf::peripherals::RNG;
 use embassy_nrf::rng::InterruptHandler as RngInterruptHandler;
@@ -24,15 +26,12 @@ use nrf_sdc::mpsl::{
     raw as mpsl_raw, ClockInterruptHandler, HighPrioInterruptHandler, LowPrioInterruptHandler,
 };
 use nrf_sdc::mpsl::{MultiprotocolServiceLayer, Peripherals};
-use nrf_sdc::raw as sdc_raw;
 use nrf_sdc::SoftdeviceController;
 use static_cell::StaticCell;
-use trouble_host::l2cap;
 use trouble_host::prelude::AdStructure;
 use trouble_host::prelude::Advertisement;
 use trouble_host::prelude::AdvertisementParameters;
 use trouble_host::prelude::DefaultPacketPool;
-use trouble_host::prelude::Uuid;
 use trouble_host::prelude::BR_EDR_NOT_SUPPORTED;
 use trouble_host::prelude::LE_GENERAL_DISCOVERABLE;
 use trouble_host::Address;
@@ -40,6 +39,14 @@ use trouble_host::Host;
 use trouble_host::HostResources;
 
 static IPC_0_WATCH: watch::Watch<CriticalSectionRawMutex, (), 1> = watch::Watch::new();
+
+#[embassy_executor::task]
+async fn led_blinker(mut led: Output<'static>) {
+    loop {
+        Timer::after_millis(500).await;
+        led.toggle();
+    }
+}
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -51,6 +58,21 @@ async fn main(spawner: Spawner) {
 
     let p = embassy_nrf::init(config);
     defmt::info!("Initialized");
+
+    let Ipc {
+        event0: start_ipc, ..
+    } = Ipc::new(p.IPC, Irqs);
+
+    let output2 = Output::new(
+        p.P0_30,
+        embassy_nrf::gpio::Level::High,
+        embassy_nrf::gpio::OutputDrive::Standard,
+    );
+
+    defmt::unwrap!(spawner.spawn(led_blinker(output2)));
+
+    defmt::info!("Triggering start no app core");
+    start_ipc.trigger();
 
     // Create the clock configuration
     let lfclk_cfg = mpsl_raw::mpsl_clock_lfclk_cfg_t {

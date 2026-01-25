@@ -66,8 +66,10 @@ pub mod ring_buffer {
             }
         }
 
-        pub unsafe fn reset_receiver(&self) {
+        pub unsafe fn reset(&self) {
             self.has_receiver
+                .store(false, core::sync::atomic::Ordering::SeqCst);
+            self.has_sender
                 .store(false, core::sync::atomic::Ordering::SeqCst);
             defmt::info!(
                 "sender: {:?}; receiver: {:?}, buffer: {:?}",

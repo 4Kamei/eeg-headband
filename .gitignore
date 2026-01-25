@@ -2,3 +2,7 @@
 .direnv
 perf.data
 perf.data.old
+
+*.hex
+*.elf
+*.bin
